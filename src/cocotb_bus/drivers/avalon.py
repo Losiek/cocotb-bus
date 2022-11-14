@@ -642,7 +642,8 @@ class AvalonSTPkts(ValidatedBusDriver):
         firstword = True
 
         # FIXME: buses that aren't an integer numbers of bytes
-        bus_width = int(len(self.bus.data) / 8)
+        # bus_width = int(len(self.bus.data) / 8)
+        bus_width = int(len(self.bus.data) / self.config["dataBitsPerSymbol"])
 
         word = BinaryValue(n_bits=len(self.bus.data),
                            bigEndian=self.config["firstSymbolInHighOrderBits"])
