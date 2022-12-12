@@ -42,7 +42,7 @@ class AvalonST(BusMonitor):
 
         for configoption, value in config.items():
             self.config[configoption] = value
-            self.log.debug("Setting config option %s to %s", configoption, str(value))
+            self.log.debug(f"{self.name}: Setting config option {configoption} to {str(value)}")
 
     async def _monitor_recv(self):
         """Watch the pins and reconstruct transactions."""
@@ -52,14 +52,14 @@ class AvalonST(BusMonitor):
 
         def valid():
             if hasattr(self.bus, "ready"):
-                return self.bus.valid.value and self.bus.ready.value
-            return self.bus.valid.value
+                return self.bus.valid.value and self.bus.ready.value  # type: ignore
+            return self.bus.valid.value  # type: ignore
 
         # NB could await on valid here more efficiently?
         while True:
             await clkedge
             if valid():
-                vec = self.bus.data.value
+                vec = self.bus.data.value  # type: ignore
                 vec.big_endian = self.config["firstSymbolInHighOrderBits"]
                 self._recv(vec.buff)
 
@@ -94,7 +94,7 @@ class AvalonSTPkts(BusMonitor):
         config={},
         report_channel=False,
         error_cb=None,
-        **kwargs
+        **kwargs,
     ):
         BusMonitor.__init__(self, entity, name, clock, **kwargs)
 
@@ -103,43 +103,36 @@ class AvalonSTPkts(BusMonitor):
 
         # Set default config maxChannel to max value on channel bus
         if hasattr(self.bus, "channel"):
-            self.config["maxChannel"] = (2 ** len(self.bus.channel)) - 1
+            self.config["maxChannel"] = (2 ** len(self.bus.channel)) - 1  # type: ignore
         else:
             if report_channel:
                 raise ValueError(
-                    "Channel reporting asked on bus without channel signal"
+                    "{self.name}: Channel reporting asked on bus without channel signal"
                 )
 
         for configoption, value in config.items():
             self.config[configoption] = value
-            self.log.debug("Setting config option %s to %s", configoption, str(value))
+            self.log.debug(f"{self.name}: Setting config option {configoption} to {str(value)}")
 
-        num_data_symbols = len(self.bus.data) / self.config["dataBitsPerSymbol"]
+        num_data_symbols = len(self.bus.data) / self.config["dataBitsPerSymbol"]  # type: ignore
         if num_data_symbols > 1 and not hasattr(self.bus, "empty"):
             raise AttributeError(
-                "%s has %i data symbols, but contains no object named empty"
-                % (self.name, num_data_symbols)
+                f"{self.name}: has {num_data_symbols} data symbols, but contains no object named empty"
             )
 
         self.config["useEmpty"] = num_data_symbols > 1
 
         if hasattr(self.bus, "channel"):
-            if len(self.bus.channel) > 128:
+            if len(self.bus.channel) > 128:  # type: ignore
                 raise AttributeError(
                     "AvalonST interface specification defines channel width as 1-128. "
-                    "%d channel width is %d" % (self.name, len(self.bus.channel))
+                    f"{self.name}: channel width is {len(self.bus.channel)}"  # type: ignore
                 )
-            maxChannel = (2 ** len(self.bus.channel)) - 1
+            maxChannel = (2 ** len(self.bus.channel)) - 1  # type: ignore
             if self.config["maxChannel"] > maxChannel:
                 raise AttributeError(
-                    "%s has maxChannel=%d, but can only support a maximum channel of "
-                    "(2**channel_width)-1=%d, channel_width=%d"
-                    % (
-                        self.name,
-                        self.config["maxChannel"],
-                        maxChannel,
-                        len(self.bus.channel),
-                    )
+                    f"{self.name}: has maxChannel={self.config['maxChannel']}, but can only support a maximum channel of "
+                    f"(2**channel_width)-1={maxChannel}, channel_width={len(self.bus.channel)}"  # type: ignore
                 )
 
         self.error_cb = error_cb
@@ -175,26 +168,26 @@ class AvalonSTPkts(BusMonitor):
                 if self.bus.startofpacket.value:  # type: ignore
                     if pkt:
                         raise AvalonProtocolError(
-                            "%s Duplicate start-of-packet received on %s"
-                            % (self.name, str(self.bus.startofpacket))
-                        )  # type: ignore
+                            f"{self.name}: Duplicate start-of-packet received on {str(self.bus.startofpacket)}"  # type: ignore
+                        )
                     pkt = b""
                     self.in_pkt.set()
 
                 if not self.in_pkt.is_set():
                     raise AvalonProtocolError(
-                        "%s Data transfer outside of " "packet", self.name
+                        f"{self.name}: Data transfer outside of packet"
                     )
 
                 # Handle empty and X's in empty / data
                 vec = BinaryValue()
-                if not self.bus.endofpacket.value:
-                    vec = self.bus.data.value
+                if not self.bus.endofpacket.value:  # type: ignore
+                    vec = self.bus.data.value  # type: ignore
                 else:
-                    value = self.bus.data.value.get_binstr()
-                    if self.config["useEmpty"] and self.bus.empty.value.integer:
+                    value = self.bus.data.value.get_binstr()  # type: ignore
+                    empty = None
+                    if self.config["useEmpty"] and self.bus.empty.value.integer:  # type: ignore
                         empty = (
-                            self.bus.empty.value.integer
+                            self.bus.empty.value.integer  # type: ignore
                             * self.config["dataBitsPerSymbol"]
                         )
                         if self.config["firstSymbolInHighOrderBits"]:
@@ -205,9 +198,7 @@ class AvalonSTPkts(BusMonitor):
                     if not vec.is_resolvable:
                         raise AvalonProtocolError(
                             "After empty masking value is still bad?  "
-                            "Had empty {:d}, got value {:s}".format(
-                                empty, self.bus.data.value.get_binstr()
-                            )
+                            f"{self.name}: Had empty {empty}, got value {self.bus.data.value.get_binstr()}"  # type: ignore
                         )
 
                 vec.big_endian = self.config["firstSymbolInHighOrderBits"]
@@ -218,27 +209,22 @@ class AvalonSTPkts(BusMonitor):
                         channel = self.bus.channel.value.integer  # type: ignore
                         if channel > self.config["maxChannel"]:
                             raise AvalonProtocolError(
-                                "%s Channel value (%d) is greater than maxChannel (%d)"
-                                % (self.name, channel, self.config["maxChannel"])
+                                f"{self.name}: Channel value ({self.config['maxChannel']}) is greater than maxChannel"
                             )
                     elif self.bus.channel.value.integer != channel:  # type: ignore
                         raise AvalonProtocolError(
-                            "%s Channel value changed during packet" % self.name
+                            f"{self.name}: Channel value changed during packet"
                         )
 
                 if hasattr(self.bus, "error"):
                     error_value = self.bus.error.value.integer  # type: ignore
                     if error_value != 0:
-                        self.log.info(
-                            "%s Received an error %d", (self.name, error_value)
-                        )
+                        self.log.info(f"{self.name}: Received an error {error_value}")
                         if self.error_cb:
                             self.error_cb(error_value)
 
                 if self.bus.endofpacket.value:  # type: ignore
-                    self.log.info(
-                        "%s Received a packet of %d bytes", (self.name, len(pkt))
-                    )
+                    self.log.info(f"{self.name}: Received a packet of {len(pkt)} bytes")
                     self.log.debug(hexdump(pkt))
                     self.channel = channel
                     if self.report_channel:
@@ -254,8 +240,7 @@ class AvalonSTPkts(BusMonitor):
                     if self.config["invalidTimeout"]:
                         if invalid_cyclecount >= self.config["invalidTimeout"]:
                             raise AvalonProtocolError(
-                                "%s In-Packet Timeout. Didn't receive any valid data for %d cycles!"
-                                % (self.name, invalid_cyclecount)
+                                f"{self.name}: In-Packet Timeout. Didn't receive any valid data for {invalid_cyclecount} cycles!"
                             )
 
 
